@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LoadMaster Pro v7</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root { --bg: #f4f4f9; --text: #333; --card: #fff; --primary: #007bff; --accent: #28a745; --note: #6f42c1; }
+        [data-theme="dark"] { --bg: #121212; --text: #e0e0e0; --card: #1e1e1e; --primary: #0d6efd; --accent: #198754; --note: #8959e1; }
+        
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; transition: 0.3s; padding-bottom: 50px; }
+        .card { background: var(--card); padding: 15px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-bottom: 15px; }
+        
+        h3 { margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 5px; }
+        input, select, button, textarea { width: 100%; padding: 12px; margin: 5px 0; border-radius: 6px; border: 1px solid #666; font-size: 16px; box-sizing: border-box; background: var(--card); color: var(--text); }
+        
+        .weight-input { font-size: 42px !important; text-align: center; font-weight: bold; height: 80px; border: 2px solid var(--primary) !important; }
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-main { background: var(--accent); color: white; height: 80px; font-size: 22px; font-weight: bold; border: none; margin-top: 10px; }
+        .btn-note { background: var(--note); color: white; font-weight: bold; border: none; margin-top: 5px; }
+        
+        .manage-section { display: none; border-top: 2px solid var(--primary); padding-top: 15px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.05); padding: 8px; margin: 4px 0; border-radius: 6px; }
+        .btn-del { width: auto; padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; }
+        .btn-edit { width: auto; padding: 5px 12px; background: #ffc107; color: #000; border: none; border-radius: 4px; margin-right: 5px; }
+        
+        .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; text-align: center; }
+        .metric-box { padding: 10px; background: rgba(0,123,255,0.1); border-radius: 8px; border: 1px solid var(--primary); }
+        .sticky-label { font-size: 11px; color: var(--primary); font-weight: bold; margin-bottom: -5px; display: block; text-transform: uppercase; }
+        
+        .history-entry { border-bottom: 1px solid #ddd; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        .note-entry { border-left: 5px solid var(--note); background: rgba(111, 66, 193, 0.05); }
+    </style>
+</head>
+<body>
+
+<div style="display:flex; justify-content: space-between; align-items: center;">
+    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7</span></h2>
+    <button onclick="toggleTheme()" style="width: auto; padding: 5px 15px;">🌗 Mode</button>
+</div>
+
+<!-- Shift Context -->
+<div class="card" style="background: rgba(0,123,255,0.05);">
+    <div class="btn-grid">
+        <div><span class="sticky-label">OPERATOR</span><select id="opSelect" onchange="saveSelections()"></select></div>
+        <div><span class="sticky-label">LOADER ASSET</span><select id="loaderSelect" onchange="saveSelections()"></select></div>
+    </div>
+    <div class="btn-grid">
+        <div><span class="sticky-label">MATERIAL</span><select id="matSelect" onchange="saveSelections()"></select></div>
+        <div><span class="sticky-label">LOCATION</span><input type="text" id="matLoc" placeholder="Pit/Bay ID" oninput="saveSelections()"></div>
+    </div>
+</div>
+
+<!-- Loading Form -->
+<div class="card">
+    <span class="sticky-label">TRUCK TO LOAD</span>
+    <select id="truckSelect" style="border: 2px solid var(--primary); font-weight: bold;"></select>
+    
+    <div style="display:flex; align-items:center; gap: 10px; margin-top: 10px;">
+        <button onclick="adjustWeight(-1)" style="width: 70px; height: 80px; font-size: 24px;">-1</button>
+        <div style="flex: 1;">
+            <span class="sticky-label" style="text-align: center;">TONS</span>
+            <input type="number" id="weightInput" class="weight-input" value="25" step="0.1">
+        </div>
+        <button onclick="adjustWeight(1)" style="width: 70px; height: 80px; font-size: 24px;">+1</button>
+    </div>
+    <button class="btn-main" id="confirmBtn" onclick="confirmLoad()">CONFIRM LOAD</button>
+</div>
+
+<!-- General Note Form -->
+<div class="card" style="border: 1px solid var(--note);">
+    <span class="sticky-label" style="color: var(--note);">General Shift Note (No Load)</span>
+    <textarea id="generalNote" rows="2" placeholder="e.g. Blasting delay, Maintenance..."></textarea>
+    <button class="btn-note" onclick="addGeneralNote()">SAVE SHIFT NOTE</button>
+    <button id="cancelEditBtn" onclick="resetForm()" style="display:none; background:#6c757d; color:white;">CANCEL EDIT</button>
+</div>
+
+<!-- Metrics -->
+<div class="card metrics">
+    <div class="metric-box">Total Tons<br><b id="m-total">0</b></div>
+    <div class="metric-box">Loads<br><b id="m-count">0</b></div>
+    <div class="metric-box">Avg Weight<br><b id="m-avg">0</b></div>
+    <div class="metric-box">Tons/Hr (TPH)<br><b id="m-tph">0</b></div>
+</div>
+
+<button onclick="exportToExcel()" style="background:#1d6f42; color:white; font-weight: bold;">📥 Export Excel Spreadsheet</button>
+<button onclick="toggleManage()" style="background:#444; color:white;">⚙️ Manage List Assets</button>
+
+<!-- Management UI -->
+<div id="manageUI" class="card manage-section">
+    <h3>Data Management</h3>
+    <p><b>Truck Assets</b></p><div id="truckList"></div>
+    <div style="display:flex; gap:5px;"><input type="text" id="newTruck" placeholder="ID"><button onclick="addItem('trucks', 'newTruck')" style="width:80px;">Add</button></div>
+    <p><b>Material Types</b></p><div id="matList"></div>
+    <div style="display:flex; gap:5px;"><input type="text" id="newMat" placeholder="Name"><button onclick="addItem('materials', 'newMat')" style="width:80px;">Add</button></div>
+    <p><b>Loaders</b></p><div id="loaderList"></div>
+    <div style="display:flex; gap:5px;"><input type="text" id="newLoader" placeholder="Loader ID"><button onclick="addItem('loaders', 'newLoader')" style="width:80px;">Add</button></div>
+    <p><b>Operators</b></p><div id="opList"></div>
+    <div style="display:flex; gap:5px;"><input type="text" id="newOp" placeholder="Name"><button onclick="addItem('operators', 'newOp')" style="width:80px;">Add</button></div>
+    <hr>
+    <button onclick="clearShift()" style="background:#ffc107; color:black;">Reset Shift (Clear History Only)</button>
+    <button onclick="clearAllData()" style="background:#dc3545; color:white; margin-top: 10px;">Factory Reset (Delete Everything)</button>
+</div>
+
+<div class="card">
+    <h3>Shift Timeline</h3>
+    <div id="historyList" style="font-size: 13px; max-height: 350px; overflow-y: auto;"></div>
+</div>
+
+<script>
+    let state = JSON.parse(localStorage.getItem('lm_v7_state')) || {
+        trucks: ['T-01'], materials: ['Gravel'], loaders: ['L-01'], operators: ['User 1'],
+        loads: [], 
+        lastSelections: { operator: '', loader: '', material: '', location: '' }
+    };
+
+    let editingIndex = -1;
+
+    function save() { 
+        localStorage.setItem('lm_v7_state', JSON.stringify(state)); 
+        updateUI(); 
+    }
+
+    function saveSelections() {
+        state.lastSelections.operator = document.getElementById('opSelect').value;
+        state.lastSelections.loader = document.getElementById('loaderSelect').value;
+        state.lastSelections.material = document.getElementById('matSelect').value;
+        state.lastSelections.location = document.getElementById('matLoc').value;
+        localStorage.setItem('lm_v7_state', JSON.stringify(state));
+    }
+
+    function toggleTheme() { document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; }
+    function toggleManage() {
+        const ui = document.getElementById('manageUI');
+        ui.style.display = ui.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function adjustWeight(val) {
+        const inp = document.getElementById('weightInput');
+        inp.value = (parseFloat(inp.value) + val).toFixed(1);
+    }
+
+    function addItem(key, inputId) {
+        const val = document.getElementById(inputId).value.trim();
+        if (val) { state[key].push(val); document.getElementById(inputId).value = ''; save(); }
+    }
+
+    function deleteItem(key, index) { state[key].splice(index, 1); save(); }
+
+    function confirmLoad() {
+        const truck = document.getElementById('truckSelect').value;
+        const mat = document.getElementById('matSelect').value;
+        if (!truck || !mat) return alert("Select Truck and Material");
+
+        const now = new Date();
+        const loadData = {
+            Time_Loaded: editingIndex > -1 ? state.loads[editingIndex].Time_Loaded : now.toLocaleString('en-GB', { hour12: false }),
+            Timestamp: editingIndex > -1 ? state.loads[editingIndex].Timestamp : now.getTime(),
+            Asset_Number: truck,
+            Material_Type: mat,
+            Material_Location: document.getElementById('matLoc').value,
+            Total_Weight_Metric: parseFloat(document.getElementById('weightInput').value),
+            Operator_Name: document.getElementById('opSelect').value,
+            Loader_Asset: document.getElementById('loaderSelect').value,
+            Comments: "",
+            Entry_Type: "LOAD"
+        };
+
+        if (editingIndex > -1) state.loads[editingIndex] = loadData;
+        else state.loads.push(loadData);
+        
+        resetForm();
+        save();
+    }
+
+    function addGeneralNote() {
+        const noteText = document.getElementById('generalNote').value.trim();
+        if (!noteText) return alert("Please type a note first");
+
+        const now = new Date();
+        const noteData = {
+            Time_Loaded: editingIndex > -1 ? state.loads[editingIndex].Time_Loaded : now.toLocaleString('en-GB', { hour12: false }),
+            Timestamp: editingIndex > -1 ? state.loads[editingIndex].Timestamp : now.getTime(),
+            Asset_Number: "---",
+            Material_Type: "---",
+            Material_Location: document.getElementById('matLoc').value || "---",
+            Total_Weight_Metric: 0,
+            Operator_Name: document.getElementById('opSelect').value,
+            Loader_Asset: document.getElementById('loaderSelect').value,
+            Comments: noteText,
+            Entry_Type: "NOTE"
+        };
+
+        if (editingIndex > -1) state.loads[editingIndex] = noteData;
+        else state.loads.push(noteData);
+
+        document.getElementById('generalNote').value = "";
+        resetForm();
+        save();
+    }
+
+    function resetForm() {
+        editingIndex = -1;
+        document.getElementById('truckSelect').selectedIndex = 0;
+        document.getElementById('weightInput').value = 25;
+        document.getElementById('generalNote').value = '';
+        document.getElementById('confirmBtn').innerText = "CONFIRM LOAD";
+        document.getElementById('cancelEditBtn').style.display = "none";
+    }
+
+    function editLoad(index) {
+        editingIndex = index;
+        const l = state.loads[index];
+        if(l.Entry_Type === "LOAD") {
+            document.getElementById('truckSelect').value = l.Asset_Number;
+            document.getElementById('weightInput').value = l.Total_Weight_Metric;
+        } else {
+            document.getElementById('generalNote').value = l.Comments;
+        }
+        document.getElementById('matSelect').value = l.Material_Type === "---" ? "" : l.Material_Type;
+        document.getElementById('opSelect').value = l.Operator_Name;
+        document.getElementById('loaderSelect').value = l.Loader_Asset;
+        document.getElementById('confirmBtn').innerText = "UPDATE RECORD";
+        document.getElementById('cancelEditBtn').style.display = "block";
+        window.scrollTo(0,0);
+    }
+
+    function deleteLoad(index) {
+        if(confirm("Delete this entry?")) { state.loads.splice(index, 1); save(); }
+    }
+
+    function updateUI() {
+        const renderOpts = (id, list, selected) => {
+            const el = document.getElementById(id);
+            const cur = el.value || selected;
+            el.innerHTML = '<option value="">-- Select --</option>' + 
+                list.map(i => `<option value="${i}" ${i === cur ? 'selected' : ''}>${i}</option>`).join('');
+        };
+        renderOpts('truckSelect', state.trucks, '');
+        renderOpts('matSelect', state.materials, state.lastSelections.material);
+        renderOpts('opSelect', state.operators, state.lastSelections.operator);
+        renderOpts('loaderSelect', state.loaders, state.lastSelections.loader);
+        document.getElementById('matLoc').value = state.lastSelections.location;
+
+        const renderList = (id, key) => {
+            document.getElementById(id).innerHTML = state[key].map((t, i) => 
+                `<div class="list-item">${t} <button class="btn-del" onclick="deleteItem('${key}', ${i})">X</button></div>`
+            ).join('');
+        };
+        renderList('truckList', 'trucks');
+        renderList('matList', 'materials');
+        renderList('loaderList', 'loaders');
+        renderList('opList', 'operators');
+
+        // FIXED METRIC CALCULATIONS
+        const loadsOnly = state.loads.filter(l => l.Entry_Type === "LOAD");
+        const totalTons = loadsOnly.reduce((s, l) => s + (l.Total_Weight_Metric || 0), 0);
+        const loadCount = loadsOnly.length;
+        
+        let tph = 0;
+        if (loadCount > 0) {
+            // Find the earliest timestamp in the current load list
+            const firstLoadTime = Math.min(...loadsOnly.map(l => l.Timestamp));
+            const currentTime = new Date().getTime();
+            // Calculate hours elapsed since the VERY FIRST load of the shift
+            const hoursElapsed = (currentTime - firstLoadTime) / 3600000;
+            
+            // If less than 1 minute has passed, we assume 1 minute to avoid massive TPH spikes
+            const divisor = Math.max(hoursElapsed, 0.0166); 
+            tph = totalTons / divisor;
+        }
+
+        document.getElementById('m-total').innerText = totalTons.toFixed(1);
+        document.getElementById('m-count').innerText = loadCount;
+        document.getElementById('m-avg').innerText = loadCount > 0 ? (totalTons / loadCount).toFixed(1) : 0;
+        document.getElementById('m-tph').innerText = tph.toFixed(1);
+
+        document.getElementById('historyList').innerHTML = state.loads.map((l, i) => `
+            <div class="history-entry ${l.Entry_Type === 'NOTE' ? 'note-entry' : ''}">
+                <div style="flex:1; padding-left: 10px;">
+                    ${l.Entry_Type === 'LOAD' ? `<b>${l.Asset_Number}</b>: ${l.Total_Weight_Metric}t` : `<b>NOTE:</b> ${l.Comments}`}
+                    <br><small>${l.Time_Loaded} ${l.Entry_Type === 'LOAD' ? `- ${l.Material_Type}` : ''}</small>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <button class="btn-edit" onclick="editLoad(${i})">Edit</button>
+                    <button class="btn-del" onclick="deleteLoad(${i})">X</button>
+                </div>
+            </div>
+        `).reverse().join('');
+    }
+
+    function exportToExcel() {
+        const ws = XLSX.utils.json_to_sheet(state.loads);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Shift_Log");
+        XLSX.writeFile(wb, `ShiftLog_${new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}.xlsx`);
+    }
+
+    function clearShift() { if(confirm("Clear history?")) { state.loads = []; save(); } }
+    function clearAllData() { if(confirm("Reset everything?")) { localStorage.clear(); location.reload(); } }
+
+    updateUI();
+    // Refresh UI every minute to update TPH as time passes
+    setInterval(updateUI, 60000);
+</script>
+</body>
+</html>
