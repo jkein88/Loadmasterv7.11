@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LoadMaster Pro v7.2</title>
+    <title>LoadMaster Pro v7.1</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --bg: #f4f4f9; --text: #333; --card: #fff; --primary: #007bff; --accent: #28a745; --note: #6f42c1; }
@@ -30,7 +30,7 @@
 <body>
 
 <div style="display:flex; justify-content: space-between; align-items: center;">
-    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7.2</span></h2>
+    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7.1</span></h2>
     <button onclick="toggleTheme()" style="width: auto; padding: 5px 15px;">🌗 Mode</button>
 </div>
 
@@ -212,24 +212,12 @@
 
     function exportToExcel() {
         try {
-            // NEW: Clean up the data so the internal Timestamp and Entry_Type aren't shown
-            const cleanData = state.loads.map(load => ({
-                "Time Loaded": load.Time_Loaded,
-                "Asset Number": load.Entry_Type === 'NOTE' ? "SHIFT NOTE" : load.Asset_Number,
-                "Material Type": load.Entry_Type === 'NOTE' ? "-" : load.Material_Type,
-                "Location": load.Entry_Type === 'NOTE' ? "-" : load.Material_Location,
-                "Weight (Tons)": load.Entry_Type === 'NOTE' ? "-" : load.Total_Weight_Metric,
-                "Operator": load.Operator_Name,
-                "Loader": load.Loader_Asset,
-                "Comments / Notes": load.Comments
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(cleanData);
+            const ws = XLSX.utils.json_to_sheet(state.loads);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Shift_Log");
             XLSX.writeFile(wb, `ShiftLog_${new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}.xlsx`);
         } catch(err) {
-            alert("Export failed: " + err.message);
+            alert("Export blocked by Android Studio: " + err.message + "\n\nPlease use the GitHub Pages web version for downloads to work.");
         }
     }
 
@@ -237,6 +225,19 @@
     function clearAllData() { if(confirm("Reset everything?")) { localStorage.clear(); location.reload(); } }
 
     updateUI(); setInterval(updateUI, 60000);
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(registration => {
+          console.log('ServiceWorker registered with scope:', registration.scope);
+        })
+        .catch(error => {
+          console.log('ServiceWorker registration failed:', error);
+        });
+    });
+  }
 </script>
 </body>
 </html>
