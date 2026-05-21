@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LoadMaster Pro v7.1</title>
+    <title>LoadMaster Pro v7.4</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --bg: #f4f4f9; --text: #333; --card: #fff; --primary: #007bff; --accent: #28a745; --note: #6f42c1; }
@@ -30,7 +30,7 @@
 <body>
 
 <div style="display:flex; justify-content: space-between; align-items: center;">
-    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7.1</span></h2>
+    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7.4</span></h2>
     <button onclick="toggleTheme()" style="width: auto; padding: 5px 15px;">🌗 Mode</button>
 </div>
 
@@ -50,7 +50,13 @@
     <select id="truckSelect" style="border: 2px solid var(--primary); font-weight: bold;"></select>
     <div style="display:flex; align-items:center; gap: 10px; margin-top: 10px;">
         <button onclick="adjustWeight(-1)" style="width: 70px; height: 80px; font-size: 24px;">-1</button>
-        <div style="flex: 1;"><span class="sticky-label" style="text-align: center;">TONS</span><input type="number" id="weightInput" class="weight-input" value="0" step="0.1"></div>
+        <div style="flex: 1;">
+            <span class="sticky-label" style="text-align: center;">TONS</span>
+            <!-- FIXED INPUT: Auto-clears the 0 when tapped -->
+            <input type="number" id="weightInput" class="weight-input" value="0" step="0.1" 
+                   onfocus="if(this.value==='0') this.value='';" 
+                   onblur="if(this.value==='') this.value='0';">
+        </div>
         <button onclick="adjustWeight(1)" style="width: 70px; height: 80px; font-size: 24px;">+1</button>
     </div>
     <button class="btn-main" id="confirmBtn" onclick="confirmLoad()">CONFIRM LOAD</button>
@@ -112,7 +118,14 @@
 
     function toggleTheme() { document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; }
     function toggleManage() { const ui = document.getElementById('manageUI'); ui.style.display = ui.style.display === 'block' ? 'none' : 'block'; }
-    function adjustWeight(val) { const inp = document.getElementById('weightInput'); inp.value = (parseFloat(inp.value) + val).toFixed(1); }
+    
+    // FIXED: adjustWeight handles empty fields correctly now
+    function adjustWeight(val) { 
+        const inp = document.getElementById('weightInput'); 
+        let current = parseFloat(inp.value) || 0; // If box is empty, treat as 0
+        let newVal = current + val;
+        inp.value = Math.max(0, newVal).toFixed(1); // Prevents negative numbers
+    }
 
     function addItem(key, inputId) {
         const val = document.getElementById(inputId).value.trim();
@@ -125,12 +138,15 @@
         const mat = document.getElementById('matSelect').value;
         if (!truck || !mat) return alert("Select Truck and Material");
 
+        const weight = parseFloat(document.getElementById('weightInput').value) || 0;
+        if (weight <= 0) return alert("Please enter a valid load weight greater than 0");
+
         const now = new Date();
         const loadData = {
             Time_Loaded: editingIndex > -1 ? state.loads[editingIndex].Time_Loaded : now.toLocaleString('en-GB', { hour12: false }),
             Timestamp: editingIndex > -1 ? state.loads[editingIndex].Timestamp : now.getTime(),
             Asset_Number: truck, Material_Type: mat, Material_Location: document.getElementById('matLoc').value,
-            Total_Weight_Metric: parseFloat(document.getElementById('weightInput').value),
+            Total_Weight_Metric: weight,
             Operator_Name: document.getElementById('opSelect').value, Loader_Asset: document.getElementById('loaderSelect').value,
             Comments: "", Entry_Type: "LOAD"
         };
@@ -155,8 +171,11 @@
     }
 
     function resetForm() {
-        editingIndex = -1; document.getElementById('truckSelect').selectedIndex = 0; document.getElementById('weightInput').value = 25;
-        document.getElementById('generalNote').value = ''; document.getElementById('confirmBtn').innerText = "CONFIRM LOAD";
+        editingIndex = -1; 
+        document.getElementById('truckSelect').selectedIndex = 0; 
+        document.getElementById('weightInput').value = '0'; 
+        document.getElementById('generalNote').value = ''; 
+        document.getElementById('confirmBtn').innerText = "CONFIRM LOAD";
         document.getElementById('cancelEditBtn').style.display = "none";
     }
 
@@ -212,12 +231,22 @@
 
     function exportToExcel() {
         try {
-            const ws = XLSX.utils.json_to_sheet(state.loads);
+            const cleanData = state.loads.map(load => ({
+                "Time Loaded": load.Time_Loaded,
+                "Asset Number": load.Entry_Type === 'NOTE' ? "SHIFT NOTE" : load.Asset_Number,
+                "Material Type": load.Entry_Type === 'NOTE' ? "-" : load.Material_Type,
+                "Location": load.Entry_Type === 'NOTE' ? "-" : load.Material_Location,
+                "Weight (Tons)": load.Entry_Type === 'NOTE' ? "-" : load.Total_Weight_Metric,
+                "Operator": load.Operator_Name,
+                "Loader": load.Loader_Asset,
+                "Comments / Notes": load.Comments
+            }));
+            const ws = XLSX.utils.json_to_sheet(cleanData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Shift_Log");
             XLSX.writeFile(wb, `ShiftLog_${new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}.xlsx`);
         } catch(err) {
-            alert("Export blocked by Android Studio: " + err.message + "\n\nPlease use the GitHub Pages web version for downloads to work.");
+            alert("Export failed: " + err.message);
         }
     }
 
@@ -226,16 +255,12 @@
 
     updateUI(); setInterval(updateUI, 60000);
 </script>
+
+<!-- Service Worker Registration -->
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(registration => {
-          console.log('ServiceWorker registered with scope:', registration.scope);
-        })
-        .catch(error => {
-          console.log('ServiceWorker registration failed:', error);
-        });
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
     });
   }
 </script>
