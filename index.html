@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LoadMaster Pro v7.4</title>
+    <title>LoadMaster Pro v7.5</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --bg: #f4f4f9; --text: #333; --card: #fff; --primary: #007bff; --accent: #28a745; --note: #6f42c1; }
@@ -30,10 +30,11 @@
 <body>
 
 <div style="display:flex; justify-content: space-between; align-items: center;">
-    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7.4</span></h2>
+    <h2 style="margin: 10px 0;">LoadMaster <span style="color:var(--primary)">v7.5</span></h2>
     <button onclick="toggleTheme()" style="width: auto; padding: 5px 15px;">🌗 Mode</button>
 </div>
 
+<!-- Shift Context -->
 <div class="card" style="background: rgba(0,123,255,0.05);">
     <div class="btn-grid">
         <div><span class="sticky-label">OPERATOR</span><select id="opSelect" onchange="saveSelections()"></select></div>
@@ -45,14 +46,23 @@
     </div>
 </div>
 
+<!-- Loading Form -->
 <div class="card">
-    <span class="sticky-label">TRUCK TO LOAD</span>
-    <select id="truckSelect" style="border: 2px solid var(--primary); font-weight: bold;"></select>
+    <div class="btn-grid">
+        <div>
+            <span class="sticky-label">TRUCK TO LOAD</span>
+            <select id="truckSelect" style="border: 2px solid var(--primary); font-weight: bold;"></select>
+        </div>
+        <div>
+            <span class="sticky-label">TIME (Blank = Now)</span>
+            <input type="datetime-local" id="timeInput" style="border: 2px solid var(--primary);">
+        </div>
+    </div>
+
     <div style="display:flex; align-items:center; gap: 10px; margin-top: 10px;">
         <button onclick="adjustWeight(-1)" style="width: 70px; height: 80px; font-size: 24px;">-1</button>
         <div style="flex: 1;">
             <span class="sticky-label" style="text-align: center;">TONS</span>
-            <!-- FIXED INPUT: Auto-clears the 0 when tapped -->
             <input type="number" id="weightInput" class="weight-input" value="0" step="0.1" 
                    onfocus="if(this.value==='0') this.value='';" 
                    onblur="if(this.value==='') this.value='0';">
@@ -62,9 +72,14 @@
     <button class="btn-main" id="confirmBtn" onclick="confirmLoad()">CONFIRM LOAD</button>
 </div>
 
+<!-- General Note Form -->
 <div class="card" style="border: 1px solid var(--note);">
     <span class="sticky-label" style="color: var(--note);">General Shift Note (No Load)</span>
     <textarea id="generalNote" rows="2" placeholder="e.g. Blasting delay, Maintenance..."></textarea>
+    
+    <span class="sticky-label" style="margin-top: 5px; color: var(--note);">NOTE TIME (Blank = Now)</span>
+    <input type="datetime-local" id="noteTimeInput">
+
     <button class="btn-note" onclick="addGeneralNote()">SAVE SHIFT NOTE</button>
     <button id="cancelEditBtn" onclick="resetForm()" style="display:none; background:#6c757d; color:white;">CANCEL EDIT</button>
 </div>
@@ -79,6 +94,7 @@
 <button onclick="exportToExcel()" style="background:#1d6f42; color:white; font-weight: bold;">📥 Export Excel Spreadsheet</button>
 <button onclick="toggleManage()" style="background:#444; color:white;">⚙️ Manage List Assets</button>
 
+<!-- Management UI -->
 <div id="manageUI" class="card manage-section">
     <h3>Data Management</h3>
     <p><b>Truck Assets</b></p><div id="truckList"></div>
@@ -119,12 +135,11 @@
     function toggleTheme() { document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; }
     function toggleManage() { const ui = document.getElementById('manageUI'); ui.style.display = ui.style.display === 'block' ? 'none' : 'block'; }
     
-    // FIXED: adjustWeight handles empty fields correctly now
     function adjustWeight(val) { 
         const inp = document.getElementById('weightInput'); 
-        let current = parseFloat(inp.value) || 0; // If box is empty, treat as 0
+        let current = parseFloat(inp.value) || 0; 
         let newVal = current + val;
-        inp.value = Math.max(0, newVal).toFixed(1); // Prevents negative numbers
+        inp.value = Math.max(0, newVal).toFixed(1); 
     }
 
     function addItem(key, inputId) {
@@ -141,16 +156,24 @@
         const weight = parseFloat(document.getElementById('weightInput').value) || 0;
         if (weight <= 0) return alert("Please enter a valid load weight greater than 0");
 
-        const now = new Date();
+        // Use custom time if provided, otherwise default to exactly NOW
+        const timeVal = document.getElementById('timeInput').value;
+        const loadDate = timeVal ? new Date(timeVal) : new Date();
+
         const loadData = {
-            Time_Loaded: editingIndex > -1 ? state.loads[editingIndex].Time_Loaded : now.toLocaleString('en-GB', { hour12: false }),
-            Timestamp: editingIndex > -1 ? state.loads[editingIndex].Timestamp : now.getTime(),
+            Time_Loaded: loadDate.toLocaleString('en-GB', { hour12: false }),
+            Timestamp: loadDate.getTime(),
             Asset_Number: truck, Material_Type: mat, Material_Location: document.getElementById('matLoc').value,
             Total_Weight_Metric: weight,
             Operator_Name: document.getElementById('opSelect').value, Loader_Asset: document.getElementById('loaderSelect').value,
             Comments: "", Entry_Type: "LOAD"
         };
+        
         if (editingIndex > -1) state.loads[editingIndex] = loadData; else state.loads.push(loadData);
+        
+        // Auto-sort to ensure chronlogical order (handles backdated missed loads perfectly)
+        state.loads.sort((a, b) => a.Timestamp - b.Timestamp);
+        
         resetForm(); save();
     }
 
@@ -158,15 +181,20 @@
         const noteText = document.getElementById('generalNote').value.trim();
         if (!noteText) return alert("Please type a note first");
 
-        const now = new Date();
+        const timeVal = document.getElementById('noteTimeInput').value;
+        const noteDate = timeVal ? new Date(timeVal) : new Date();
+
         const noteData = {
-            Time_Loaded: editingIndex > -1 ? state.loads[editingIndex].Time_Loaded : now.toLocaleString('en-GB', { hour12: false }),
-            Timestamp: editingIndex > -1 ? state.loads[editingIndex].Timestamp : now.getTime(),
+            Time_Loaded: noteDate.toLocaleString('en-GB', { hour12: false }),
+            Timestamp: noteDate.getTime(),
             Asset_Number: "---", Material_Type: "---", Material_Location: document.getElementById('matLoc').value || "---",
             Total_Weight_Metric: 0, Operator_Name: document.getElementById('opSelect').value,
             Loader_Asset: document.getElementById('loaderSelect').value, Comments: noteText, Entry_Type: "NOTE"
         };
+        
         if (editingIndex > -1) state.loads[editingIndex] = noteData; else state.loads.push(noteData);
+        state.loads.sort((a, b) => a.Timestamp - b.Timestamp);
+        
         document.getElementById('generalNote').value = ""; resetForm(); save();
     }
 
@@ -175,14 +203,27 @@
         document.getElementById('truckSelect').selectedIndex = 0; 
         document.getElementById('weightInput').value = '0'; 
         document.getElementById('generalNote').value = ''; 
+        document.getElementById('timeInput').value = ''; // Reset to blank (Current Time)
+        document.getElementById('noteTimeInput').value = ''; // Reset to blank (Current Time)
         document.getElementById('confirmBtn').innerText = "CONFIRM LOAD";
         document.getElementById('cancelEditBtn').style.display = "none";
     }
 
     function editLoad(index) {
         editingIndex = index; const l = state.loads[index];
-        if(l.Entry_Type === "LOAD") { document.getElementById('truckSelect').value = l.Asset_Number; document.getElementById('weightInput').value = l.Total_Weight_Metric; } 
-        else { document.getElementById('generalNote').value = l.Comments; }
+        
+        // Convert timestamp to local HTML datetime string so it populates the box
+        const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+        const localISOTime = new Date(l.Timestamp - tzOffset).toISOString().slice(0, 16);
+
+        if(l.Entry_Type === "LOAD") { 
+            document.getElementById('truckSelect').value = l.Asset_Number; 
+            document.getElementById('weightInput').value = l.Total_Weight_Metric;
+            document.getElementById('timeInput').value = localISOTime;
+        } else { 
+            document.getElementById('generalNote').value = l.Comments; 
+            document.getElementById('noteTimeInput').value = localISOTime;
+        }
         document.getElementById('matSelect').value = l.Material_Type === "---" ? "" : l.Material_Type;
         document.getElementById('opSelect').value = l.Operator_Name; document.getElementById('loaderSelect').value = l.Loader_Asset;
         document.getElementById('confirmBtn').innerText = "UPDATE RECORD"; document.getElementById('cancelEditBtn').style.display = "block"; window.scrollTo(0,0);
