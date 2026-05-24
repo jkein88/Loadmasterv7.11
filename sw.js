@@ -1,4 +1,4 @@
-const CACHE_NAME = 'loadmaster-cache-v5';
+const CACHE_NAME = 'loadmaster-cache-v6';
 
 // These are the files we want to lock into the tablet's memory
 const urlsToCache = [
